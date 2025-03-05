@@ -5,7 +5,7 @@ import { config } from '../Config'
 import * as Crypto from '../Crypto'
 import * as State from '../State'
 import { Utils as StringUtils } from '@shardeum-foundation/lib-types'
-import { CheckpointStatusType, CheckpointSyncStatus, updateCheckpointStatusField, upsertCheckpointStatus } from '../dbstore/checkpointStatus'
+import { CheckpointStatusType, updateCheckpointStatusField } from '../dbstore/checkpointStatus'
 
 export enum CheckpointType {
   Cycle = 0,
@@ -134,10 +134,10 @@ export class CheckpointBucketManager<T> {
 
   addData(data: CheckpointData<T>, bucketID: string): void {
     if (!config.checkpoint.bucketConfig.allowCheckpointUpdates) {
-      // Don't save data if checkpoint system updates are disabled 
+      // Don't save data if checkpoint system updates are disabled
       return
     }
-    
+
     let bucket = this.checkpointBuckets.get(bucketID)
     if (!bucket) {
       // Determine if data.t is in milliseconds or seconds
@@ -217,7 +217,11 @@ export class CheckpointBucketManager<T> {
                 `Bucket ${bucket.bucketID} has updates to share. Writing to file and alerting.`
               )
             }
-            updateCheckpointStatusField(parseInt(bucket.bucketID,10), checkpointStatusToTypeMap[this.checkpointType], false)
+            updateCheckpointStatusField(
+              parseInt(bucket.bucketID, 10),
+              checkpointStatusToTypeMap[this.checkpointType],
+              false
+            )
             bucket.writeToFileAndAlert()
             this.lastFailedBucketTime = Date.now()
           } else {
@@ -228,7 +232,11 @@ export class CheckpointBucketManager<T> {
             }
             // Add the bucket to the bucketsToPersist map so we can handle writing without blocking the update
             this.bucketsToPersist.set(bucket.bucketID, bucket)
-            updateCheckpointStatusField(parseInt(bucket.bucketID,10), checkpointStatusToTypeMap[this.checkpointType], true)
+            updateCheckpointStatusField(
+              parseInt(bucket.bucketID, 10),
+              checkpointStatusToTypeMap[this.checkpointType],
+              true
+            )
           }
           toRemove.push(id)
         } else {
@@ -541,11 +549,7 @@ export class CheckpointBucket<T> {
         // 1. We have a majority hash
         // 2. The majority hash has enough votes
         // 3. Our hash is different from majority hash
-        if (
-          majorityHash &&
-          maxVotes >= majorityThreshold &&
-          majorityHash !== localEntry.digest.hash
-        ) {
+        if (majorityHash && maxVotes >= majorityThreshold && majorityHash !== localEntry.digest.hash) {
           this.requestRepairForRadix(radix)
         }
 

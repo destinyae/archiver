@@ -30,9 +30,11 @@ import { Cycle as DbCycle } from '../dbstore/types'
 import { Utils as StringUtils } from '@shardeum-foundation/lib-types'
 import { verifyPayload } from '../types/ajv/Helpers'
 import { AJVSchemaEnum } from '../types/enum/AJVSchemaEnum'
-import {verifyTransaction} from "../services/transactionVerification";
+import { verifyTransaction } from "../services/transactionVerification";
 import { CycleShardData } from '@shardeum-foundation/lib-types/build/src/state-manager/shardFunctionTypes'
 import { generateTxId } from '../Utils'
+import { bulkUpdateCheckpointStatusField } from '../dbstore/checkpointStatus'
+import { CheckpointStatusType } from '../dbstore/checkpointStatus'
 
 export let storingAccountData = false
 const processedReceiptsMap: Map<string, number> = new Map()
@@ -567,8 +569,8 @@ const calculateVoteHash = (vote: Receipt.AppliedVote | Receipt.Proposal): string
       }
       const accountsHash = Crypto.hash(
         Crypto.hashObj(proposal.accountIDs) +
-          Crypto.hashObj(proposal.beforeStateHashes) +
-          Crypto.hashObj(proposal.afterStateHashes)
+        Crypto.hashObj(proposal.beforeStateHashes) +
+        Crypto.hashObj(proposal.afterStateHashes)
       )
       const proposalHash = Crypto.hash(
         Crypto.hashObj(applyStatus) + accountsHash + proposal.appReceiptDataHash + proposal.executionShardKey
@@ -995,6 +997,11 @@ export const storeReceiptData = async (
   if (combineReceipts.length > 0) {
     await Receipt.bulkInsertReceipts(combineReceipts)
     if (State.isActive) sendDataToAdjacentArchivers(DataType.RECEIPT, txDataList)
+    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+      const cycles = [...new Set(combineReceipts.map(receipt => receipt.cycle))]
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.RECEIPT, true, undefined, undefined, cycles)
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, undefined, undefined, cycles)
+    }
   }
 
   if (combineOriginalTxsData.length > 0) {
@@ -1198,10 +1205,10 @@ export const storeOriginalTxData = async (
 
       if (result !== 'pass') {
         Logger.mainLogger.info(
-            `OriginalTxData verification failed for`,
-            StringUtils.safeStringify(originalTxData),
-            '\n with reason ',
-            reason
+          `OriginalTxData verification failed for`,
+          StringUtils.safeStringify(originalTxData),
+          '\n with reason ',
+          reason
         );
         continue
       }
@@ -1263,7 +1270,7 @@ export const validateOriginalTxDataSchema = (originalTxData: OriginalTxsData.Ori
     );
     return false;
   }
-  
+
   return true
 }
 

@@ -1420,7 +1420,7 @@ export function registerRoutes(server: FastifyInstance<Server, IncomingMessage, 
   server.post('/bucket-verification', async (request: BucketVerificationRequest & Request, reply) => {
     try {
       const requestData = request.body
-      const result = validateRequestData(requestData, { bucketID: 's' , sender: 's', sign: 'o'})
+      const result = validateRequestData(requestData, { bucketID: 's', sender: 's', sign: 'o' })
       if (!result.success) {
         reply.code(400).send({
           success: false,
@@ -1584,32 +1584,29 @@ export const queryFromArchivers = async (
       break
   }
 
-  console.log("Querying from archivers...")
   const maxNumberofArchiversToRetry = 3
   const randomArchivers = Utils.getRandomItemFromArr(State.otherArchivers, 0, maxNumberofArchiversToRetry)
   let retry = 0
 
   // If checkpoint is enabled and we have a bucket ID, try to find an archiver with verified data first
-  if (bucketID !== undefined && randomArchivers.length > 0) {
+  if (config.checkpoint.bucketConfig.allowCheckpointUpdates && bucketID !== undefined && randomArchivers.length > 0) {
     for (const archiver of randomArchivers) {
       if (!archiver) continue;
       try {
-        console.log("Checking bucket verification for archiver:", archiver.ip, archiver.port)
         // Check if this archiver has verified the bucket
 
         const data = {
           bucketID: bucketID.toString(),
           sender: config.ARCHIVER_PUBLIC_KEY,
         }
-        const signedDataToSend = Crypto.sign(data)
+        const signedBucketVerificationDataToSend = Crypto.sign(data)
         const verificationResponse: { success?: boolean, isVerified?: boolean } = await P2P.postJson(
           `http://${archiver.ip}:${archiver.port}/bucket-verification`,
-          signedDataToSend,
+          signedBucketVerificationDataToSend,
           timeoutInSecond
         )
         const isVerifiedBucket = verificationResponse?.success && verificationResponse?.isVerified
         if (isVerifiedBucket) {
-          console.log("Found verified archiver:", archiver.ip, archiver.port)
           // Try to get data from this archiver since it has verified data
           const response = await P2P.postJson(
             `http://${archiver.ip}:${archiver.port}${url}`,
@@ -1629,7 +1626,6 @@ export const queryFromArchivers = async (
     // eslint-disable-next-line security/detect-object-injection
     let randomArchiver = randomArchivers[retry]
     if (!randomArchiver) randomArchiver = randomArchivers[0]
-    console.log("Querying from archiver:", randomArchiver.ip, randomArchiver.port)
     try {
       const response = await P2P.postJson(
         `http://${randomArchiver.ip}:${randomArchiver.port}${url}`,

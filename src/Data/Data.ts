@@ -398,7 +398,7 @@ export function collectCycleData(
     }
     if (config.VERBOSE)
       Logger.mainLogger.debug('Cycle received', cycle.counter, receivedCycleTracker[cycle.counter])
-    
+
     let minCycleConfirmations =
       Math.min(Math.ceil(NodeList.getActiveNodeCount() / currentConsensusRadius), 5) ||
       (cycle.counter <= 15 ? 1 : 3);
@@ -1365,7 +1365,7 @@ export async function syncCyclesAndNodeList(lastStoredCycleCount = 0): Promise<v
     const prevCycles = await fetchCycleRecords(nextEnd, endCycle)
 
     // If prevCycles is empty, start over
-    if (prevCycles.length < 1) throw new Error('Got empty previous cycles')
+    if (!prevCycles || prevCycles.length < 1) throw new Error('Got empty previous cycles')
     prevCycles.sort((a, b) => (a.counter > b.counter ? -1 : 1))
 
     // Add prevCycles to our cycle chain
@@ -1414,14 +1414,14 @@ export async function syncCyclesAndNodeListV2(
 export async function syncCyclesBetweenCycles(lastStoredCycle = 0, cycleToSyncTo = 0): Promise<boolean> {
   const MAX_RETRIES = 3;
   let retryCount = 0;
-  
+
   let startCycle = lastStoredCycle
   let endCycle = startCycle + MAX_CYCLES_PER_REQUEST
-  
+
   while (cycleToSyncTo > startCycle) {
     if (endCycle > cycleToSyncTo) endCycle = cycleToSyncTo
     Logger.mainLogger.debug(`Downloading cycles from ${startCycle} to ${endCycle}`)
-    
+
     let success = false
     retryCount = 0
 
@@ -1438,7 +1438,7 @@ export async function syncCyclesBetweenCycles(lastStoredCycle = 0, cycleToSyncTo
       if (res && res.cycleInfo) {
         const cycles = res.cycleInfo as P2PTypes.CycleCreatorTypes.CycleData[]
         Logger.mainLogger.debug(`Downloaded cycles`, cycles.length)
-        
+
         let validCyclesCount = 0
         for (const cycle of cycles) {
           if (!validateCycleData(cycle)) {
@@ -1448,9 +1448,9 @@ export async function syncCyclesBetweenCycles(lastStoredCycle = 0, cycleToSyncTo
           await processCycles([cycle])
           validCyclesCount++
         }
-        
+
         success = true
-        
+
         if (cycles.length < MAX_CYCLES_PER_REQUEST || validCyclesCount === 0) {
           startCycle += Math.max(cycles.length, 1)
           endCycle = startCycle + MAX_CYCLES_PER_REQUEST
@@ -1476,22 +1476,22 @@ export async function syncCyclesBetweenCycles(lastStoredCycle = 0, cycleToSyncTo
       endCycle += MAX_CYCLES_PER_REQUEST
     }
   }
-  
+
   return true
 }
 
 export async function syncReceipts(): Promise<void> {
   const MAX_RETRIES = 3;
   let retryCount = 0;
-  
+
   let response: ArchiverTotalDataResponse = await getTotalDataFromArchivers()
   if (!response || response.totalReceipts < 0) {
     return
   }
-  
+
   let { totalReceipts } = response
   if (totalReceipts < 1) return
-  
+
   let complete = false
   let start = 0
   let end = start + MAX_RECEIPTS_PER_REQUEST
@@ -1559,7 +1559,7 @@ export async function syncReceipts(): Promise<void> {
       end += MAX_RECEIPTS_PER_REQUEST
     }
   }
-  
+
   Logger.mainLogger.debug('Sync receipts data completed!')
 }
 
@@ -1688,7 +1688,6 @@ export async function syncReceiptsByCycle(lastStoredReceiptCycle = 0, cycleToSyn
       }
       Logger.mainLogger.debug(`Download receipts completed for ${startCycle} - ${endCycle}`)
       // Update checkpoint status for completed cycles
-      await bulkUpdateCheckpointStatusField(startCycle, endCycle, CheckpointStatusType.RECEIPT, true)
       startCycle = endCycle + 1
       endCycle += MAX_BETWEEN_CYCLES_PER_REQUEST
       retryCount = 0
@@ -1714,15 +1713,15 @@ export async function syncReceiptsByCycle(lastStoredReceiptCycle = 0, cycleToSyn
 export const syncOriginalTxs = async (): Promise<void> => {
   const MAX_RETRIES = 3;
   let retryCount = 0;
-  
+
   let response: ArchiverTotalDataResponse = await getTotalDataFromArchivers()
   if (!response || response.totalOriginalTxs < 0) {
     return
   }
-  
+
   let { totalOriginalTxs } = response
   if (totalOriginalTxs < 1) return
-  
+
   let complete = false
   let start = 0
   let end = start + MAX_ORIGINAL_TXS_PER_REQUEST
@@ -1789,7 +1788,7 @@ export const syncOriginalTxs = async (): Promise<void> => {
       end += MAX_ORIGINAL_TXS_PER_REQUEST
     }
   }
-  
+
   Logger.mainLogger.debug('Sync Original-Txs Data Completed!')
 }
 
@@ -1912,7 +1911,7 @@ export const syncOriginalTxsByCycle = async (
         }
       }
       Logger.mainLogger.debug(`Download Original-Txs completed for ${startCycle} - ${endCycle}`)
-      await bulkUpdateCheckpointStatusField(startCycle, endCycle, CheckpointStatusType.ORIGINAL_TX, true)
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, startCycle, endCycle)
       startCycle = endCycle + 1
       endCycle += MAX_BETWEEN_CYCLES_PER_REQUEST
     } else {
@@ -1935,7 +1934,7 @@ export const syncCyclesAndTxsData = async (
 ): Promise<void> => {
   const MAX_RETRIES = 3;
   let retryCount = 0;
-  
+
   let response: ArchiverTotalDataResponse = await getTotalDataFromArchivers()
   if (!response || response.totalCycles < 0 || response.totalReceipts < 0) {
     return
@@ -2043,7 +2042,6 @@ export const syncCyclesAndTxsData = async (
           Logger.mainLogger.debug(`Downloaded receipts`, downloadedReceipts.length)
           await storeReceiptData(downloadedReceipts)
           success = true
-          
           if (downloadedReceipts.length < MAX_ORIGINAL_TXS_PER_REQUEST) {
             startReceipt += downloadedReceipts.length + 1
             endReceipt += downloadedReceipts.length + MAX_ORIGINAL_TXS_PER_REQUEST
@@ -2086,7 +2084,7 @@ export const syncCyclesAndTxsData = async (
     //       Logger.mainLogger.debug(`Downloaded Original-Txs: `, downloadedOriginalTxs.length)
     //       await storeOriginalTxData(downloadedOriginalTxs)
     //       success = true
-          
+
     //       if (downloadedOriginalTxs.length < MAX_ORIGINAL_TXS_PER_REQUEST) {
     //         startOriginalTx += downloadedOriginalTxs.length + 1
     //         endOriginalTx += downloadedOriginalTxs.length + MAX_ORIGINAL_TXS_PER_REQUEST
@@ -2134,7 +2132,7 @@ export const syncCyclesAndTxsData = async (
             processCycles([cycle])
           }
           success = true
-          
+
           if (cycles.length < MAX_CYCLES_PER_REQUEST) {
             startCycle += cycles.length + 1
             endCycle += cycles.length + MAX_CYCLES_PER_REQUEST
@@ -2349,7 +2347,6 @@ export async function compareWithOldCyclesData(lastCycleCounter = 0): Promise<Co
         !oldCycle ||
         StringUtils.safeStringify(downloadedCycle) !== StringUtils.safeStringify(oldCycle)
       ) {
-        console.log('Mismatched cycle Number', downloadedCycle.counter, oldCycle.counter)
         return {
           success,
           matchedCycle,
@@ -2393,7 +2390,7 @@ async function downloadOldCycles(
       },
       QUERY_TIMEOUT_MAX
     )) as ArchiverCycleResponse
-    if (!res || !res.cycleInfo) {
+    if (!res || !res.cycleInfo || !Array.isArray(res.cycleInfo) || res.cycleInfo.length === 0) {
       Logger.mainLogger.error(
         `Can't fetch data from cycle ${startCycle} to cycle ${endCycle}  from archivers`
       )
@@ -2405,8 +2402,9 @@ async function downloadOldCycles(
         retryCount = 0
       }
     }
+
     const prevCycles = res.cycleInfo as P2PTypes.CycleCreatorTypes.CycleData[]
-    prevCycles.sort((a, b) => (a.counter > b.counter ? -1 : 1))
+    if (prevCycles) prevCycles.sort((a, b) => (a.counter > b.counter ? -1 : 1))
 
     const combineCycles: P2PTypes.CycleCreatorTypes.CycleData[] = []
     for (const prevCycle of prevCycles) {

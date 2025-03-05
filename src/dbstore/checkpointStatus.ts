@@ -9,13 +9,6 @@ export enum CheckpointStatusType {
   ORIGINAL_TX = 'original_tx',
 }
 
-export enum CheckpointSyncStatus {
-  PENDING = 'pending',
-  SYNCING = 'syncing',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-}
-
 export interface CheckpointStatus {
   cycle: number
   unifiedStatus: boolean
@@ -79,7 +72,6 @@ export async function updateCheckpointStatusField(
   value: boolean
 ): Promise<void> {
   try {
-   
     // Create a new status object with default values
     const newStatus: CheckpointStatus = {
       cycle,
@@ -88,37 +80,36 @@ export async function updateCheckpointStatusField(
       receiptStatus: false,
       originalTxStatus: false,
       created_at: Date.now(),
-    };
-    
+    }
+
     // Get the current status (if it exists)
-    const currentStatus = await getCheckpointStatus(cycle);
-    
+    const currentStatus = await getCheckpointStatus(cycle)
+
     // If current status exists, copy all its values
     if (currentStatus) {
-      newStatus.cycleStatus = currentStatus.cycleStatus;
-      newStatus.receiptStatus = currentStatus.receiptStatus;
-      newStatus.originalTxStatus = currentStatus.originalTxStatus;
+      newStatus.cycleStatus = currentStatus.cycleStatus
+      newStatus.receiptStatus = currentStatus.receiptStatus
+      newStatus.originalTxStatus = currentStatus.originalTxStatus
     }
-    
+
     // Get the field name to update based on the status field type
-    const fieldToUpdate = fieldMapping[statusField];
-    
-    // Update the specific field (using type assertion for TypeScript)
-    (newStatus as Record<string, any>)[fieldToUpdate] = value;
-    
+    const fieldToUpdate = fieldMapping[statusField]
+
+      // Update the specific field (using type assertion for TypeScript)
+      ; (newStatus as Record<string, any>)[fieldToUpdate] = value
+
     // Calculate the unified status
-    newStatus.unifiedStatus = 
-      newStatus.cycleStatus && newStatus.receiptStatus && newStatus.originalTxStatus;
-    
+    newStatus.unifiedStatus = newStatus.cycleStatus && newStatus.receiptStatus && newStatus.originalTxStatus
+
     // Use the existing upsert function to save the changes
-    await upsertCheckpointStatus(newStatus);
-    
+    await upsertCheckpointStatus(newStatus)
+
     if (config.VERBOSE) {
-      Logger.mainLogger.debug(`Updated checkpoint status for cycle ${cycle}, ${statusField} to ${value}`);
+      Logger.mainLogger.debug(`Updated checkpoint status for cycle ${cycle}, ${statusField} to ${value}`)
     }
   } catch (err) {
-    Logger.mainLogger.error('Error updating checkpoint status field:', err);
-    throw err;
+    Logger.mainLogger.error('Error updating checkpoint status field:', err)
+    throw err
   }
 }
 
@@ -130,82 +121,117 @@ export async function updateCheckpointStatusField(
  *   - Uses one multi-row upsert to write them back.
  */
 export async function bulkUpdateCheckpointStatusField(
-  startCycle: number,
-  endCycle: number,
   statusField: CheckpointStatusType,
-  value: boolean
+  value: boolean,
+  startCycle?: number,
+  endCycle?: number,
+  cycles?: number[]
 ): Promise<void> {
-  if (endCycle < startCycle) {
-    throw new Error(`Invalid range: endCycle (${endCycle}) < startCycle (${startCycle})`);
-  }
+  try {
+    if (!startCycle && !endCycle && !cycles) {
+      throw new Error('No range or cycles provided')
+    }
+    let existingRows: CheckpointStatus[] = []
+    let existingMap = new Map<number, CheckpointStatus>()
 
-  // 1) Fetch existing records for [startCycle, endCycle] in one query
-  const existingRows = await getCheckpointStatusForRange(startCycle, endCycle);
-  // Convert to a map for quick lookup by cycle number
-  const existingMap = new Map<number, CheckpointStatus>();
-  for (const row of existingRows) {
-    existingMap.set(row.cycle, row);
-  }
+    // Handle range-based updates
+    if (startCycle !== undefined && endCycle !== undefined) {
+      if (endCycle < startCycle) {
+        throw new Error(`Invalid range: endCycle (${endCycle}) < startCycle (${startCycle})`)
+      }
+      existingRows = await getCheckpointStatusForRange(startCycle, endCycle)
 
-  // 2) Build the new/updated list of statuses in memory
-  const toUpsertList: CheckpointStatus[] = [];
-  for (let cycle = startCycle; cycle <= endCycle; cycle++) {
-    // If it doesn't exist, create a default
-    let currentStatus = existingMap.get(cycle);
-    if (!currentStatus) {
-      currentStatus = {
-        cycle,
-        unifiedStatus: false,
-        cycleStatus: false,
-        receiptStatus: false,
-        originalTxStatus: false,
-        created_at: Date.now(),
-      };
+      // Convert to a map for quick lookup by cycle number
+      for (const row of existingRows) {
+        existingMap.set(row.cycle, row)
+      }
+
+      // Create entries for missing cycles in the range
+      for (let cycle = startCycle; cycle <= endCycle; cycle++) {
+        if (!existingMap.has(cycle)) {
+          existingMap.set(cycle, {
+            cycle,
+            unifiedStatus: false,
+            cycleStatus: false,
+            receiptStatus: false,
+            originalTxStatus: false,
+            created_at: Date.now(),
+          })
+        }
+      }
     }
 
-    // Update the desired field using the fieldMapping
-    const fieldToUpdate = fieldMapping[statusField];
-    // Update the specific field (using type assertion for TypeScript)
-    (currentStatus as Record<string, any>)[fieldToUpdate] = value;
-    
-    // Recompute the unifiedStatus
-    currentStatus.unifiedStatus =
-      currentStatus.cycleStatus &&
-      currentStatus.receiptStatus &&
-      currentStatus.originalTxStatus;
-    currentStatus.created_at = Date.now();
-    toUpsertList.push(currentStatus);
-  }
+    // Handle specific cycles
+    if (cycles && cycles.length > 0) {
+      const cyclesStatus = new Map<number, CheckpointStatus>()
+      await Promise.all(cycles.map(async (cycle) => {
+        const status = await getCheckpointStatus(cycle)
+        if (status) {
+          cyclesStatus.set(cycle, status)
+        } else {
+          cyclesStatus.set(cycle, {
+            cycle,
+            unifiedStatus: false,
+            cycleStatus: false,
+            receiptStatus: false,
+            originalTxStatus: false,
+            created_at: Date.now(),
+          })
+        }
+      }))
+      existingMap = cyclesStatus
+    }
 
-  // 3) Perform a bulk upsert in one shot
-  //    - If your DB has constraints on # of parameters (SQLite ~999), chunk as needed
-  await bulkUpsertCheckpointStatus(toUpsertList);
+    // Build the new/updated list of statuses in memory
+    const toUpsertList: CheckpointStatus[] = []
+    for (let cycle of existingMap.keys()) {
+      // Get the current status (should always exist at this point)
+      let currentStatus = existingMap.get(cycle)!
 
-  if (config.VERBOSE) {
-    Logger.mainLogger.debug(
-      `Bulk updated field "${statusField}" to ${value} for cycles [${startCycle}..${endCycle}]`
-    );
+      // Update the desired field using the fieldMapping
+      const fieldToUpdate = fieldMapping[statusField]
+        // Update the specific field (using type assertion for TypeScript)
+        ; (currentStatus as Record<string, any>)[fieldToUpdate] = value
+
+      // Recompute the unifiedStatus
+      currentStatus.unifiedStatus =
+        currentStatus.cycleStatus && currentStatus.receiptStatus && currentStatus.originalTxStatus
+      currentStatus.created_at = Date.now()
+      toUpsertList.push(currentStatus)
+    }
+
+    // Perform a bulk upsert in one shot
+    if (toUpsertList.length > 0) {
+      await bulkUpsertCheckpointStatus(toUpsertList)
+    }
+
+    if (config.VERBOSE) {
+      if (startCycle !== undefined && endCycle !== undefined) {
+        Logger.mainLogger.debug(
+          `Bulk updated field "${statusField}" to ${value} for cycles [${startCycle}..${endCycle}]`
+        )
+      } else if (cycles) {
+        Logger.mainLogger.debug(
+          `Bulk updated field "${statusField}" to ${value} for specific cycles: ${cycles.join(', ')}`
+        )
+      }
+    }
+  } catch (err) {
+    Logger.mainLogger.error('Error in bulkUpdateCheckpointStatusField:', err)
+    throw err
   }
 }
 
-
 async function bulkUpsertCheckpointStatus(statusList: CheckpointStatus[]): Promise<void> {
-  if (statusList.length === 0) return;
+  if (statusList.length === 0) return
 
   // We are constructing multiple placeholders for a single multi-row insert
-  const placeholders: string[] = [];
-  const values: any[] = [];
+  const placeholders: string[] = []
+  const values: any[] = []
 
   for (const s of statusList) {
-    placeholders.push('(?, ?, ?, ?, ?, ?)');
-    values.push(
-      s.cycle,
-      s.unifiedStatus ? 1 : 0,
-      s.cycleStatus ? 1 : 0,
-      s.receiptStatus ? 1 : 0,
-      s.originalTxStatus ? 1 : 0,
-      s.created_at
-    );
+    placeholders.push('(?, ?, ?, ?, ?, ?)')
+    values.push(s.cycle, s.unifiedStatus, s.cycleStatus, s.receiptStatus, s.originalTxStatus, s.created_at)
   }
 
   // Upsert by 'cycle' using ON CONFLICT DO UPDATE
@@ -225,22 +251,19 @@ async function bulkUpsertCheckpointStatus(statusList: CheckpointStatus[]): Promi
       receiptStatus=excluded.receiptStatus,
       originalTxStatus=excluded.originalTxStatus,
       created_at=excluded.created_at
-  `;
+  `
 
   try {
-    await db.run(checkpointStatusDatabase, sql, values);
+    await db.run(checkpointStatusDatabase, sql, values)
   } catch (err) {
-    Logger.mainLogger.error('Error in bulkUpsertCheckpointStatus:', err);
-    throw err;
+    Logger.mainLogger.error('Error in bulkUpsertCheckpointStatus:', err)
+    throw err
   }
 
   if (config.VERBOSE) {
-    Logger.mainLogger.debug(
-      `Bulk upserted ${statusList.length} checkpoint status rows.`
-    );
+    Logger.mainLogger.debug(`Bulk upserted ${statusList.length} checkpoint status rows.`)
   }
 }
-
 
 /**
  * Gets a checkpoint status by cycle
@@ -297,14 +320,10 @@ async function getCheckpointStatusForRange(
     FROM checkpoint_status
     WHERE cycle BETWEEN ? AND ?
     ORDER BY cycle
-  `;
-  const rows = await db.all(checkpointStatusDatabase, sql, [
-    startCycle,
-    endCycle,
-  ]);
-  return rows as CheckpointStatus[];
+  `
+  const rows = await db.all(checkpointStatusDatabase, sql, [startCycle, endCycle])
+  return rows as CheckpointStatus[]
 }
-
 
 /**
  * Gets all checkpoint statuses with a specific unified status
@@ -346,46 +365,6 @@ export async function getCheckpointStatusesByUnifiedStatus(unified: boolean): Pr
   }
 }
 
-/**
- * Gets all failed checkpoint statuses for a specific type
- * @param type The checkpoint type
- * @returns Array of failed checkpoint statuses
- */
-// export async function getFailedCheckpointStatuses(type: CheckpointStatusType): Promise<CheckpointStatus[]> {
-//   try {
-//     const sql = `
-//       SELECT * FROM checkpoint_status
-//       WHERE type = ? AND status = ?
-//       ORDER BY cycle ASC
-//     `
-
-//     const results = await db.all(checkpointStatusDatabase, sql, [type, CheckpointSyncStatus.FAILED])
-
-//     return results.map((result) => {
-//       // Add type assertion to fix TypeScript errors
-//       const typedResult = result as {
-//         cycle: number
-//         unifiedStatus: boolean
-//         cycleStatus: boolean
-//         receiptStatus: boolean
-//         originalTxStatus: boolean
-//         created_at: number
-//       }
-
-//       return {
-//         cycle: typedResult.cycle,
-//         unifiedStatus: typedResult.unifiedStatus,
-//         cycleStatus: typedResult.cycleStatus,
-//         receiptStatus: typedResult.receiptStatus,
-//         originalTxStatus: typedResult.originalTxStatus,
-//         created_at: typedResult.created_at,
-//       }
-//     })
-//   } catch (err) {
-//     Logger.mainLogger.error('Error getting failed checkpoint statuses:', err)
-//     throw err
-//   }
-// }
 
 /**
  * Gets the oldest pending or failed checkpoint status
@@ -400,10 +379,7 @@ export async function getOldestPendingOrFailedCheckpointStatus(): Promise<Checkp
       LIMIT 1
     `
 
-    const result = await db.get(checkpointStatusDatabase, sql, [
-      CheckpointSyncStatus.PENDING,
-      CheckpointSyncStatus.FAILED,
-    ])
+    const result = await db.get(checkpointStatusDatabase, sql, [false])
 
     if (!result) {
       return null
@@ -442,13 +418,10 @@ export async function getCheckpointSyncRange(): Promise<{ minCycle: number; maxC
     const sql = `
       SELECT MIN(cycle) as minCycle, MAX(cycle) as maxCycle
       FROM checkpoint_status
-      WHERE unifiedStatus in (?, ?)
+      WHERE unifiedStatus = ?
     `
 
-    const result = await db.get(checkpointStatusDatabase, sql, [
-      CheckpointSyncStatus.PENDING,
-      CheckpointSyncStatus.FAILED,
-    ])
+    const result = await db.get(checkpointStatusDatabase, sql, [false])
 
     // Add type assertion to fix TypeScript errors
     const typedResult = result as {

@@ -119,7 +119,7 @@ export async function queryOriginalTxDataCount(startCycle?: number, endCycle?: n
     }
     originalTxsData = await db.get(originalTxDataDatabase, sql, values)
   } catch (e) {
-    console.log(e)
+    Logger.mainLogger.error(e)
   }
   if (config.VERBOSE) {
     Logger.mainLogger.debug('OriginalTxData count', originalTxsData)
@@ -154,7 +154,7 @@ export async function queryOriginalTxsData(
       // if (originalTxData.sign) originalTxData.sign = DeSerializeFromJsonString(originalTxData.sign)
     })
   } catch (e) {
-    console.log(e)
+    Logger.mainLogger.error(e)
   }
   if (config.VERBOSE) {
     Logger.mainLogger.debug('OriginalTxData originalTxsData', originalTxsData)

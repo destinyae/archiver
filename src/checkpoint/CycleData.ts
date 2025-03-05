@@ -101,13 +101,13 @@ export class CycleRadixDigestTally extends RadixDigestTally {
 async function validateData(data: CheckpointData<Cycle>): Promise<boolean> {
   const cycle = data.d
   // Basic validation checks
-  if (!cycle || (cycle.counter === undefined) || !cycle.cycleMarker || !cycle.cycleRecord) {
+  if (!cycle || cycle.counter === undefined || !cycle.cycleMarker || !cycle.cycleRecord) {
     Logger.mainLogger.error('Missing required cycle fields')
     return false
   }
 
   // Validate cycle record fields
-  if (!cycle.cycleRecord.start || (cycle.cycleRecord.counter === undefined)) {
+  if (!cycle.cycleRecord.start || cycle.cycleRecord.counter === undefined) {
     Logger.mainLogger.error('Invalid cycle record fields')
     return false
   }

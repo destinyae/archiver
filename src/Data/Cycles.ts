@@ -32,6 +32,8 @@ import { addCyclesToCache } from '../cache/cycleRecordsCache'
 import { queryLatestCycleRecords } from '../dbstore/cycles'
 import { updateGlobalNetworkAccount } from '../GlobalAccount'
 import { syncTxList } from '../sync-v2'
+import { CheckpointStatusType } from '../dbstore/checkpointStatus'
+import { bulkUpdateCheckpointStatusField } from '../dbstore/checkpointStatus'
 
 export interface ArchiverCycleResponse {
   cycleInfo: P2PTypes.CycleCreatorTypes.CycleData[]
@@ -81,7 +83,6 @@ export async function processCycles(cycles: P2PTypes.CycleCreatorTypes.CycleData
       await storeCycleData([cycle])
 
       Logger.mainLogger.debug(`Processed cycle ${cycle.counter}`)
-
       if (State.isActive) {
         sendDataToAdjacentArchivers(DataType.CYCLE, [cycle])
         // Check the archivers reputaion in every new cycle & record the status
@@ -106,6 +107,9 @@ export async function processCycles(cycles: P2PTypes.CycleCreatorTypes.CycleData
     }
   } finally {
     if (profilerInstance) profilerInstance.profileSectionEnd('process_cycle', false)
+    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.CYCLE, true, undefined, undefined, [...new Set(cycles.map(cycle => cycle.counter))])
+    }
   }
 }
 
