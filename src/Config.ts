@@ -22,6 +22,7 @@ export interface Config {
     originalTxDataDB: string
     processedTxDB: string
     txDigestDB: string
+    checkpointStatusDB: string
   }
   DATASENDER_TIMEOUT: number
   RATE_LIMIT: number // number of allowed request per second,
@@ -35,16 +36,21 @@ export interface Config {
   }
   ARCHIVER_MODE: string
   DevPublicKey: string
-  checkpointBucketConfig: {
-    BucketMatureAge: number //  start sharing hashes after this age is reached.
-    cycleAge: number // In second
-    GiveUpAge: number // eventual give up age.  write bucket to disk in this case and raise warnings/alerts
-    lastFailedBucketDuration: number // in milliseconds, used for alerting
-    RadixDepth: number // 16 way trie depth in nibbles (one hex char)
-    allowCheckpointUpdates: boolean
-    allowCheckpointStorage: boolean
+  checkpoint: {
+    bucketConfig: {
+      BucketMatureAge: number
+      cycleAge: number
+      GiveUpAge: number
+      lastFailedBucketDuration: number
+      RadixDepth: number
+      allowCheckpointUpdates: boolean
+      allowCheckpointStorage: boolean
+    }
+    updateInterval: number
+    syncInterval: number
+    maxCyclesToSync: number
+    syncOnStartup: boolean
   }
-  checkpointUpdateInterval: number // 1 minute in milliseconds
   dataLogWrite: boolean
   dataLogWriter: {
     dirName: string
@@ -143,6 +149,7 @@ let config: Config = {
     originalTxDataDB: 'originalTxsData.sqlite3',
     processedTxDB: 'processedTransactions.sqlite3',
     txDigestDB: 'txDigest.sqlite3',
+    checkpointStatusDB: 'checkpointStatus.sqlite3',
   },
   DATASENDER_TIMEOUT: 1000 * 60 * 5,
   RATE_LIMIT: 100, // 100 req per second,
@@ -185,16 +192,21 @@ let config: Config = {
     MAX_CYCLES_PER_REQUEST: 100,
     MAX_BETWEEN_CYCLES_PER_REQUEST: 100,
   },
-  checkpointBucketConfig: {
-    BucketMatureAge: 11 * 60, // 11 minutes
-    cycleAge: 60, // 60 seconds
-    GiveUpAge: 20 * 60, // 20 minutes
-    lastFailedBucketDuration: 5 * 60 * 1000, // 5 minutes
-    RadixDepth: 2, // 2 nibbles (1 hex char)
-    allowCheckpointUpdates: false,
-    allowCheckpointStorage: false
+  checkpoint: {
+    bucketConfig: {
+      BucketMatureAge: 11 * 60, // 11 minutes
+      cycleAge: 60, // 60 seconds
+      GiveUpAge: 20 * 60, // 20 minutes
+      lastFailedBucketDuration: 5 * 60 * 1000, // 5 minutes
+      RadixDepth: 2, // 2 nibbles (1 hex char)
+      allowCheckpointUpdates: false,
+      allowCheckpointStorage: false
+    },
+    updateInterval: 60 * 1000, // 1 minute in milliseconds  in milliseconds
+    syncInterval: 10000, // 10 seconds in milliseconds
+    maxCyclesToSync: 100, // Maximum number of cycles to sync in one go
+    syncOnStartup: false, // Sync missing checkpoints on startup
   },
-  checkpointUpdateInterval: 60 * 1000, // 1 minute in milliseconds  in milliseconds
   cycleRecordsCache: {
     enabled: false,
   },

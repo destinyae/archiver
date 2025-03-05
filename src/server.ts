@@ -1,4 +1,4 @@
-import {scheduleMultiSigKeysSyncFromNetConfig} from "./services/transactionVerification";
+import { scheduleMultiSigKeysSyncFromNetConfig } from "./services/transactionVerification";
 
 const _startingMessage = `@shardeum-foundation/archiver starting at
   locale:  ${new Date().toLocaleString()}
@@ -40,8 +40,8 @@ import { startSaving } from './saveConsoleOutput'
 import { setupArchiverDiscovery } from '@shardeum-foundation/lib-archiver-discovery'
 import * as Collector from './Data/Collector'
 import { loadGlobalAccounts, syncGlobalAccount } from './GlobalAccount'
-import { setShutdownCycleRecord, cycleRecordWithShutDownMode } from './Data/Cycles'
-import { registerRoutes } from './API'
+import { setShutdownCycleRecord, cycleRecordWithShutDownMode, ArchiverCycleResponse } from './Data/Cycles'
+import { queryFromArchivers, registerRoutes } from './API'
 import { Utils as StringUtils } from '@shardeum-foundation/lib-types'
 import { healthCheckRouter } from './routes/healthCheck'
 import { initializeTickets } from './routes/tickets';
@@ -52,6 +52,8 @@ import { cycleCheckpointManager } from './checkpoint/CycleData'
 import { receiptCheckpointManager } from './checkpoint/ReceiptData'
 import { originalTxCheckpointManager } from './checkpoint/OriginalTxsData'
 import { createDirectories } from "./Utils";
+import { initCheckpointV2, syncMissingCheckpoints } from './checkpoint/CheckpointV2';
+import { RequestDataType } from './API';
 
 const configFile = resolve(__dirname, '../archiver-config.json')
 const allowedArchiversConfigPath = join(__dirname, '../allowed-archivers.json')
@@ -197,30 +199,51 @@ async function start(): Promise<void> {
 
   // Create the failed buckets directory
   createDirectories(config.failedBucketsDir)
-  
+
+  // Initialize checkpoint V2 system if enabled and checkpoint updates and storage are allowed
+  if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+    Logger.mainLogger.info('Initializing checkpoint V2 system')
+    initCheckpointV2()
+
+    // Sync missing checkpoints on startup if enabled
+    if (config.checkpoint.syncOnStartup) {
+      setTimeout(async () => {
+        try {
+          await syncMissingCheckpoints(config.checkpoint.maxCyclesToSync)
+        } catch (error) {
+          Logger.mainLogger.error('Error syncing missing checkpoints on startup:', error)
+        }
+      }, 30 * 1000) // Wait 30 seconds after startup to begin syncing
+    }
+  }
+
   async function updateCheckpoints() {
     const startTime = Date.now()
 
     try {
-      // Initialize checkpoint system with null checks
-      if (cycleCheckpointManager && receiptCheckpointManager && originalTxCheckpointManager) {
-        await Promise.all([
-          cycleCheckpointManager.update(),
-          receiptCheckpointManager.update(),
-          originalTxCheckpointManager.update(),
-        ])
+      // Only update checkpoints if both updates and storage are allowed
+      if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+
+        if (cycleCheckpointManager && receiptCheckpointManager && originalTxCheckpointManager) {
+          await Promise.all([
+            cycleCheckpointManager.update(),
+            receiptCheckpointManager.update(),
+            originalTxCheckpointManager.update()
+          ])
+        }
       }
     } catch (error) {
       Logger.mainLogger.error('Error updating checkpoints:', error)
     }
 
     const elapsedTime = Date.now() - startTime
-    const nextExecutionDelay = Math.max(0, config.checkpointUpdateInterval - elapsedTime)
+    const nextExecutionDelay = Math.max(0, config.checkpoint.updateInterval - elapsedTime)
 
     setTimeout(updateCheckpoints, nextExecutionDelay)
   }
 
-  if (config.checkpointBucketConfig.allowCheckpointUpdates) {
+  // Start the update loop only if checkpoint updates and storage are allowed
+  if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
     // Start the update loop
     updateCheckpoints()
   }  
@@ -307,15 +330,83 @@ async function syncAndStartServer(): Promise<void> {
     // Compare old cycle data with the archiver data
     const cycleResult = await Data.compareWithOldCyclesData(lastStoredCycleInfo.counter)
 
-    // If the cycle data does not match, clear the DB and start again
+    // If the cycle data does not match, patch the data instead of throwing an error
     if (!cycleResult.success) {
-      throw Error(
-        'The last saved 10 cycles data does not match with the archiver data! Clear the DB and start the server again!'
-      )
-    }
+      // Get the latest cycle from archivers to know how far we need to sync
+      const latestNetworkCycle = await Cycles.getNewestCycleFromArchivers()
 
-    // Update the last stored cycle count
-    lastStoredCycleCount = cycleResult.matchedCycle
+      // Find the last valid cycle we have
+      let lastValidCycle = cycleResult.matchedCycle
+      if (lastValidCycle === 0) {
+        // If no valid cycle was found, we'll start from scratch
+        lastStoredCycleCount = 0
+      } else {
+        // We have a valid cycle, so we'll start from there
+        lastStoredCycleCount = lastValidCycle
+      }
+
+      // Check if the cycle difference is too large and checkpoint v2 is not enabled
+      if (!config.checkpoint.bucketConfig.allowCheckpointUpdates && (latestNetworkCycle.counter - lastStoredCycleCount) > 10) {
+        throw new Error('Cycle difference is more than 10 and checkpoint v2 is not enabled. Please enable checkpoint v2 to sync large cycle differences.')
+      }
+
+      // Sync cycles in batches
+      const BATCH_SIZE = 10
+      let currentStart = lastStoredCycleCount
+      let currentEnd = Math.min(currentStart + BATCH_SIZE, latestNetworkCycle.counter)
+
+      while (currentStart < latestNetworkCycle.counter) {
+        Logger.mainLogger.info(`Patching cycles from ${currentStart} to ${currentEnd}...`)
+
+        try {
+          const response = await queryFromArchivers(
+            RequestDataType.CYCLE,
+            {
+              start: currentStart,
+              end: currentEnd
+            },
+            10000 // 10 seconds
+          ) as ArchiverCycleResponse
+
+          if (response && response.cycleInfo && response.cycleInfo.length > 0) {
+            // Sort cycles in ascending order
+            const cycles = response.cycleInfo.sort((a, b) => a.counter - b.counter)
+
+            // Process and store the cycles
+            await Cycles.processCycles(cycles)
+
+            // Update our progress
+            currentStart = currentEnd
+            currentEnd = Math.min(currentStart + BATCH_SIZE, latestNetworkCycle.counter)
+          } else {
+            // Reduce batch size on failure
+            const newBatchSize = Math.max(1, Math.floor(BATCH_SIZE / 2))
+            currentEnd = Math.min(currentStart + newBatchSize, latestNetworkCycle.counter)
+          }
+        } catch (error) {
+          Logger.mainLogger.error(`Error patching cycles from ${currentStart} to ${currentEnd}:`, error)
+          // Reduce batch size on error
+          const newBatchSize = Math.max(1, Math.floor(BATCH_SIZE / 2))
+          currentEnd = Math.min(currentStart + newBatchSize, latestNetworkCycle.counter)
+
+          // If we're trying to fetch just one cycle and still failing, skip it
+          if (currentEnd - currentStart === 1) {
+            Logger.mainLogger.warn(`Skipping problematic cycle ${currentStart}`)
+            currentStart++
+            currentEnd = Math.min(currentStart + 1, latestNetworkCycle.counter)
+          }
+        }
+      }
+
+      // Update lastStoredCycleCount to reflect our progress
+      lastStoredCycleCount = await CycleDB.queryCyleCount()
+      lastStoredCycleInfo = (await CycleDB.queryLatestCycleRecords(1))[0]
+
+      Logger.mainLogger.info(`Cycle data patching complete. Now at cycle ${lastStoredCycleInfo.counter}`)
+    } else {
+      // Update the last stored cycle count
+      lastStoredCycleCount = cycleResult.matchedCycle
+    }
   }
 
   // Log the last stored cycle and receipt counts
@@ -390,15 +481,87 @@ async function syncAndStartServer(): Promise<void> {
     // Compare old receipts data with the archiver data
     const receiptResult = await Data.compareWithOldReceiptsData(lastStoredReceiptCycle)
 
-    // If the receipt data does not match, clear the DB and start again
+    // If the receipt data does not match, patch the data instead of throwing an error
     if (!receiptResult.success) {
-      throw Error(
-        'The last saved receipts of last 10 cycles data do not match with the archiver data! Clear the DB and start the server again!'
-      )
-    }
+      if (!config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+        throw new Error(
+          'Receipt cycle difference is more than 10 and checkpoint v2 is not enabled. Please enable checkpoint v2 to sync large differences.'
+        )
+      }
 
-    // Update the last stored receipt cycle
-    lastStoredReceiptCycle = receiptResult.matchedCycle
+      // Get the latest cycle to know how far we need to sync
+      const latestNetworkCycle = await Cycles.getNewestCycleFromArchivers()
+
+      // Find the last valid cycle for receipts
+      let lastValidReceiptCycle = receiptResult.matchedCycle
+      if (lastValidReceiptCycle === 0) {
+        // If no valid cycle was found, we'll start from scratch
+        lastStoredReceiptCycle = 0
+      } else {
+        // We have a valid cycle, so we'll start from there
+        lastStoredReceiptCycle = lastValidReceiptCycle
+      }
+
+      // Sync receipts in batches by cycle
+      const BATCH_SIZE = 5
+      let currentStart = lastStoredReceiptCycle
+      let currentEnd = Math.min(currentStart + BATCH_SIZE, latestNetworkCycle.counter)
+
+      while (currentStart < latestNetworkCycle.counter) {
+        try {
+          const response = (await queryFromArchivers(
+            RequestDataType.RECEIPT,
+            {
+              startCycle: currentStart,
+              endCycle: currentEnd,
+              type: 'full',
+            },
+            10000 // 10 seconds
+          )) as any
+
+          if (response && response.receipts && response.receipts.length > 0) {
+            // Store the receipts
+            await Collector.storeReceiptData(response.receipts)
+
+            // Update our progress
+            currentStart = currentEnd
+            currentEnd = Math.min(currentStart + BATCH_SIZE, latestNetworkCycle.counter)
+          } else {
+            // Reduce batch size on failure
+            const newBatchSize = Math.max(1, Math.floor(BATCH_SIZE / 2))
+            currentEnd = Math.min(currentStart + newBatchSize, latestNetworkCycle.counter)
+          }
+        } catch (error) {
+          Logger.mainLogger.error(
+            `Error patching receipts from cycle ${currentStart} to ${currentEnd}:`,
+            error
+          )
+          // Reduce batch size on error
+          const newBatchSize = Math.max(1, Math.floor(BATCH_SIZE / 2))
+          currentEnd = Math.min(currentStart + newBatchSize, latestNetworkCycle.counter)
+          Logger.mainLogger.error(
+            `Failed to fetch receipts from cycle ${currentStart} to ${currentEnd}. Retrying...`
+          )
+          // If we're trying to fetch just one cycle and still failing, skip it
+          if (currentEnd - currentStart === 1) {
+            Logger.mainLogger.warn(`Skipping problematic receipt cycle ${currentStart}`)
+            currentStart++
+            currentEnd = Math.min(currentStart + 1, latestNetworkCycle.counter)
+          }
+        }
+      }
+
+      // Update lastStoredReceiptCycle to reflect our progress
+      const updatedReceiptInfo = await ReceiptDB.queryLatestReceipts(1)
+      if (updatedReceiptInfo && updatedReceiptInfo.length > 0) {
+        lastStoredReceiptCycle = updatedReceiptInfo[0].cycle
+      }
+
+      Logger.mainLogger.info(`Receipt data patching complete. Now at cycle ${lastStoredReceiptCycle}`)
+    } else {
+      // Update the last stored receipt cycle
+      lastStoredReceiptCycle = receiptResult.matchedCycle
+    }
   }
 
   // if (lastStoredOriginalTxCount > 0) {
@@ -430,12 +593,55 @@ async function syncAndStartServer(): Promise<void> {
   if (config.experimentalSnapshot) {
     // Sync GlobalAccountsList and cache the Global Network Account
     await syncGlobalAccount()
-    // If no receipts stored, synchronize all receipts, otherwise synchronize by cycle
-    if (lastStoredReceiptCount === 0) await Data.syncReceipts()
-    else {
-      Logger.mainLogger.debug('lastStoredReceiptCycle', lastStoredReceiptCycle)
-      await Data.syncReceiptsByCycle(lastStoredReceiptCycle)
-    }
+
+    // If checkpoint V2 is enabled, use it for syncing
+    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+      Logger.mainLogger.info('Using checkpoint V2 for data synchronization')
+
+      // Import checkpoint status types
+      const { CheckpointStatusType, CheckpointSyncStatus } = await import('./dbstore/checkpointStatus')
+
+      // Get the latest cycle from the network
+      const latestNetworkCycle = await Cycles.getNewestCycleFromArchivers()
+
+      // Record checkpoint status for cycles that need syncing
+      for (let cycle = lastStoredCycleCount; cycle <= latestNetworkCycle.counter; cycle++) {
+        // Record cycle checkpoint status
+        await import('./dbstore/checkpointStatus').then(({ upsertCheckpointStatus }) => {
+          upsertCheckpointStatus({
+            cycle,
+            unifiedStatus: cycle <= lastStoredCycleCount ? true : false,
+            cycleStatus: cycle <= lastStoredCycleCount ? true : false,
+            receiptStatus: cycle <= lastStoredCycleCount ? true : false,
+            originalTxStatus: cycle <= lastStoredCycleCount ? true : false,
+            created_at: Date.now(),
+          })
+        })
+
+      }
+
+      // Start the server first, then sync missing data in the background
+      await startServer()
+
+      // Sync missing data in the background
+      setTimeout(async () => {
+        try {
+          // Import and run the sync function
+          const { syncMissingCheckpoints } = await import('./checkpoint/CheckpointV2')
+          await syncMissingCheckpoints(config.checkpoint.maxCyclesToSync)
+        } catch (error) {
+          Logger.mainLogger.error('Error syncing missing checkpoints after server start:', error)
+        }
+      }, config.checkpoint.syncInterval)
+
+    } else {
+      // Use the original sync method
+      // If no receipts stored, synchronize all receipts, otherwise synchronize by cycle
+      if (lastStoredReceiptCount === 0) await Data.syncReceipts()
+      else {
+        Logger.mainLogger.debug('lastStoredReceiptCycle', lastStoredReceiptCycle)
+        await Data.syncReceiptsByCycle(lastStoredReceiptCycle)
+      }
 
     // if (lastStoredOriginalTxCount === 0) await Data.syncOriginalTxs()
     // else {
@@ -450,23 +656,27 @@ async function syncAndStartServer(): Promise<void> {
     lastStoredCycleCount = await CycleDB.queryCyleCount()
     lastStoredCycleInfo = (await CycleDB.queryLatestCycleRecords(1))[0]
 
-    // Check for any missing data and perform syncing if necessary
-    if (lastStoredCycleCount - 1 !== lastStoredCycleInfo.counter) {
-      throw Error(
-        `The archiver has ${lastStoredCycleCount} and the latest stored cycle is ${lastStoredCycleInfo.counter}`
-      )
+      // Check for any missing data and perform syncing if necessary
+      if (lastStoredCycleCount - 1 !== lastStoredCycleInfo.counter) {
+        throw Error(
+          `The archiver has ${lastStoredCycleCount} and the latest stored cycle is ${lastStoredCycleInfo.counter}`
+        )
+      }
+      await Data.syncCyclesAndTxsData(lastStoredCycleCount, lastStoredReceiptCount)
+
+      // Start the server after syncing
+      await startServer()
     }
-    await Data.syncCyclesAndTxsData(lastStoredCycleCount, lastStoredReceiptCount) // , lastStoredOriginalTxCount)
   } else {
     // Sync all state metadata until no older data is fetched from other archivers
     await syncStateMetaData(State.activeArchivers)
+
+    // Wait for one cycle before sending data request if experimentalSnapshot is not enabled
+    await Utils.sleep(cycleDuration * 1000)
+
+    // Start the server
+    await startServer()
   }
-
-  // Wait for one cycle before sending data request if experimentalSnapshot is not enabled
-  if (!config.experimentalSnapshot) await Utils.sleep(cycleDuration * 1000)
-
-  // Start the server
-  await startServer()
 
   if (!config.sendActiveMessage) {
     await Data.subscribeNodeForDataTransfer()

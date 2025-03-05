@@ -41,6 +41,8 @@ import { AccountsCopy } from '../dbstore/accounts'
 import { getJson } from '../P2P'
 import { robustQuery } from '../Utils'
 import { Utils as StringUtils } from '@shardeum-foundation/lib-types'
+import { bulkUpdateCheckpointStatusField } from '../dbstore/checkpointStatus'
+import { CheckpointStatusType } from '../dbstore/checkpointStatus'
 
 export const socketClients: Map<string, SocketIOClientStatic['Socket']> = new Map()
 export let combineAccountsData = {
@@ -1685,6 +1687,8 @@ export async function syncReceiptsByCycle(lastStoredReceiptCycle = 0, cycleToSyn
         }
       }
       Logger.mainLogger.debug(`Download receipts completed for ${startCycle} - ${endCycle}`)
+      // Update checkpoint status for completed cycles
+      await bulkUpdateCheckpointStatusField(startCycle, endCycle, CheckpointStatusType.RECEIPT, true)
       startCycle = endCycle + 1
       endCycle += MAX_BETWEEN_CYCLES_PER_REQUEST
       retryCount = 0
@@ -1908,6 +1912,7 @@ export const syncOriginalTxsByCycle = async (
         }
       }
       Logger.mainLogger.debug(`Download Original-Txs completed for ${startCycle} - ${endCycle}`)
+      await bulkUpdateCheckpointStatusField(startCycle, endCycle, CheckpointStatusType.ORIGINAL_TX, true)
       startCycle = endCycle + 1
       endCycle += MAX_BETWEEN_CYCLES_PER_REQUEST
     } else {
@@ -2415,4 +2420,50 @@ async function downloadOldCycles(
     await storeCycleData(combineCycles)
     endCycle = startCycle - 1
   }
+}
+
+/**
+ * Syncs cycle data for a specific cycle
+ * @param cycle The cycle number to sync
+ * @returns True if successful, false otherwise
+ */
+export async function syncCycleData(cycle: number): Promise<boolean> {
+  const MAX_RETRIES = 3
+  let retryCount = 0
+  let success = false
+
+  while (!success && retryCount < MAX_RETRIES) {
+    try {
+      const res = await queryFromArchivers(
+        RequestDataType.CYCLE,
+        {
+          start: cycle,
+          end: cycle,
+        },
+        QUERY_TIMEOUT_MAX
+      ) as ArchiverCycleResponse
+
+      if (res && res.cycleInfo && res.cycleInfo.length > 0) {
+        const cycleData = res.cycleInfo[0]
+
+        if (!validateCycleData(cycleData)) {
+          Logger.mainLogger.error(`Invalid cycle data for cycle ${cycle}`)
+          retryCount++
+          continue
+        }
+
+        await processCycles([cycleData])
+        // Successfully synced cycle data for cycle
+        success = true
+        return true
+      } else {
+        Logger.mainLogger.error(`Failed to get cycle data for cycle ${cycle}, attempt ${retryCount + 1} of ${MAX_RETRIES}`)
+        retryCount++
+      }
+    } catch (error) {
+      Logger.mainLogger.error(`Error syncing cycle data for cycle ${cycle}: ${error}`)
+      retryCount++
+    }
+  }
+  return false
 }
