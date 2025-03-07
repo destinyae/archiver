@@ -37,7 +37,6 @@ export async function insertOriginalTxData(originalTxData: OriginalTxData, store
       const checkpointData = new OriginalTxCheckpointData(originalTxData)
       const bucketID = calculateBucketID(originalTxData)
       originalTxCheckpointManager.addData(checkpointData, bucketID)
-      await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, undefined, undefined, [originalTxData.cycle])
     }
 
     // Define the table columns based on schema
@@ -56,6 +55,10 @@ export async function insertOriginalTxData(originalTxData: OriginalTxData, store
 
     // Execute the query directly (single-row insert)
     await db.run(originalTxDataDatabase, sql, values)
+
+    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, undefined, undefined, [originalTxData.cycle])
+    }
 
     if (config.VERBOSE) {
       Logger.mainLogger.debug('Successfully inserted OriginalTxData', originalTxData.txId)
@@ -79,7 +82,6 @@ export async function bulkInsertOriginalTxsData(originalTxsData: OriginalTxData[
         const checkpointData = new OriginalTxCheckpointData(originalTx)
         const bucketID = calculateBucketID(originalTx)
         originalTxCheckpointManager.addData(checkpointData, bucketID)
-        await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, undefined, undefined, [originalTx.cycle])
       }
     }
 
@@ -99,6 +101,10 @@ export async function bulkInsertOriginalTxsData(originalTxsData: OriginalTxData[
 
     // Execute the single query for all originalTxsData
     await db.run(originalTxDataDatabase, sql, values);
+
+    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, undefined, undefined, originalTxsData.map((tx) => tx.cycle))
+    }
 
     if (config.VERBOSE) {
       Logger.mainLogger.debug('Successfully inserted OriginalTxsData', originalTxsData.length);

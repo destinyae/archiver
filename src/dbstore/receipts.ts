@@ -115,7 +115,6 @@ export async function insertReceipt(receipt: Receipt, storeCheckpoints: boolean 
       const checkpointData = new ReceiptCheckpointData(receipt)
       const bucketID = calculateBucketID(receipt)
       receiptCheckpointManager.addData(checkpointData, bucketID)
-      await bulkUpdateCheckpointStatusField(CheckpointStatusType.RECEIPT, true, undefined, undefined, [receipt.cycle])
     }
 
     // Define the columns to match the database schema
@@ -147,6 +146,10 @@ export async function insertReceipt(receipt: Receipt, storeCheckpoints: boolean 
     // Execute the query directly
     await db.run(receiptDatabase, sql, values)
 
+    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.RECEIPT, true, undefined, undefined, [receipt.cycle])
+    }
+
     if (config.VERBOSE) {
       Logger.mainLogger.debug('Successfully inserted Receipt', receipt.receiptId)
     }
@@ -168,7 +171,6 @@ export async function bulkInsertReceipts(receipts: Receipt[], storeCheckpoints: 
         const checkpointData = new ReceiptCheckpointData(receipt)
         const bucketID = calculateBucketID(receipt)
         receiptCheckpointManager.addData(checkpointData, bucketID)
-        await bulkUpdateCheckpointStatusField(CheckpointStatusType.RECEIPT, true, undefined, undefined, [receipt.cycle])
       }
     }
 
@@ -202,6 +204,10 @@ export async function bulkInsertReceipts(receipts: Receipt[], storeCheckpoints: 
 
     // Execute the query in a single call
     await db.run(receiptDatabase, sql, values)
+
+    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.RECEIPT, true, undefined, undefined, receipts.map((receipt) => receipt.cycle))
+    }
 
     if (config.VERBOSE) {
       Logger.mainLogger.debug('Successfully inserted Receipts', receipts.length)
