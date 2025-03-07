@@ -27,7 +27,7 @@ export async function insertCycle(cycle: Cycle, storeCheckpoints: boolean = true
     // Execute the query directly (single-row insert)
     await db.run(cycleDatabase, sql, values);
 
-    if (storeCheckpoints) {
+    if (storeCheckpoints && config.checkpoint.bucketConfig.allowCheckpointUpdates) {
       //Create checkpoint for cycle
       const bucketID = calculateBucketID(cycle)
       const checkpointData = new CycleCheckpointData(cycle)
@@ -53,7 +53,7 @@ export async function insertCycle(cycle: Cycle, storeCheckpoints: boolean = true
 
 export async function bulkInsertCycles(cycles: Cycle[], storeCheckpoints: boolean = true): Promise<void> {
   try {
-    if (storeCheckpoints) {
+    if (storeCheckpoints && config.checkpoint.bucketConfig.allowCheckpointUpdates) {
       // Create checkpoints for all cycles
       for (const cycle of cycles) {
         const checkpointData = new CycleCheckpointData(cycle)
@@ -91,7 +91,7 @@ export async function bulkInsertCycles(cycles: Cycle[], storeCheckpoints: boolea
 
 export async function updateCycle(marker: string, cycle: Cycle, storeCheckpoints: boolean = true): Promise<void> {
   try {
-    if (storeCheckpoints) {
+    if (storeCheckpoints && config.checkpoint.bucketConfig.allowCheckpointUpdates) {
       // Create a checkpoint before updating
       const checkpointData = new CycleCheckpointData(cycle)
       const bucketID = calculateBucketID(cycle)

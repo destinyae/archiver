@@ -31,7 +31,7 @@ type DbOriginalTxDataCount = OriginalTxDataCount & {
 export async function insertOriginalTxData(originalTxData: OriginalTxData, storeCheckpoints: boolean = true): Promise<void> {
 
   try {
-    if (storeCheckpoints) {
+    if (storeCheckpoints && config.checkpoint.bucketConfig.allowCheckpointUpdates) {
       // Create checkpoint for originalTxData
       const checkpointData = new OriginalTxCheckpointData(originalTxData)
       const bucketID = calculateBucketID(originalTxData)
@@ -71,7 +71,7 @@ export async function insertOriginalTxData(originalTxData: OriginalTxData, store
 export async function bulkInsertOriginalTxsData(originalTxsData: OriginalTxData[], storeCheckpoints: boolean = true): Promise<void> {
 
   try {
-    if (storeCheckpoints) {
+    if (storeCheckpoints && config.checkpoint.bucketConfig.allowCheckpointUpdates) {
       // Create checkpoints for all originalTxs
       for (const originalTx of originalTxsData) {
         const checkpointData = new OriginalTxCheckpointData(originalTx)

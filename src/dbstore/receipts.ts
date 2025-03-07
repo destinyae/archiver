@@ -109,7 +109,7 @@ type DbReceiptCount = ReceiptCount & {
 
 export async function insertReceipt(receipt: Receipt, storeCheckpoints: boolean = true): Promise<void> {
   try {
-    if (storeCheckpoints) {
+    if (storeCheckpoints && config.checkpoint.bucketConfig.allowCheckpointUpdates) {
       // Create checkpoint for receipt
       const checkpointData = new ReceiptCheckpointData(receipt)
       const bucketID = calculateBucketID(receipt)
@@ -160,7 +160,7 @@ export async function insertReceipt(receipt: Receipt, storeCheckpoints: boolean 
 export async function bulkInsertReceipts(receipts: Receipt[], storeCheckpoints: boolean = true): Promise<void> {
 
   try {
-    if (storeCheckpoints) {
+    if (storeCheckpoints && config.checkpoint.bucketConfig.allowCheckpointUpdates) {
       // Create checkpoints for all receipts
       for (const receipt of receipts) {
         const checkpointData = new ReceiptCheckpointData(receipt)
