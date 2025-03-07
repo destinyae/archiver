@@ -382,9 +382,12 @@ export function collectCycleData(
 
     let receivedCertSigners = []
     if (NodeList.activeListByIdSorted.length > 0) {
+      Logger.mainLogger.info(`sender is ${senderInfo} with counter ${cycle.counter}`)
       const certSigners = receivedCycleTracker[cycle.counter]?.[cycle.marker]?.['certSigners'] ?? new Set();
       // need to get the hash(marker) of the cycle as it was in q3/q4 when the certs were made and compared
       const cycleCopy = getRecordWithoutPostQ3Changes(cycle)
+      Logger.mainLogger.debug('cycleCopy', cycleCopy)
+
       const validateCertsResult = validateCerts((cycle as subscriptionCycleData).certificates, certSigners, Cycles.computeCycleMarker(cycleCopy))
       if (validateCertsResult === false) break
     }
@@ -397,6 +400,7 @@ export function collectCycleData(
         for (const signer of receivedCertSigners)
           receivedCycleTracker[cycle.counter][cycle.marker]['certSigners'].add(signer)
       } else {
+        Logger.mainLogger.debug('hopefully in here')
         if (!validateCycleData(cycle)) continue
         receivedCycleTracker[cycle.counter][cycle.marker] = {
           cycleInfo: cycle,
@@ -424,9 +428,12 @@ export function collectCycleData(
       continue
     }
 
-    const requiredSenders = dataSenders.size ? Math.ceil(dataSenders.size/2) : 1
+    //const requiredSenders = dataSenders.size ? Math.ceil(dataSenders.size/2) : 1
+    const requiredSenders = dataSenders.size ? dataSenders.size - 2 : 1
 
     if (receivedCycleTracker[cycle.counter]['received'] >= requiredSenders) {
+      console.log('DEBUG: logging receivedCycleTracker')
+      console.dir(receivedCycleTracker, { depth: null })
       let bestScore = 0
       let bestMarker = ''
 
@@ -444,7 +451,9 @@ export function collectCycleData(
         }
         // get sum of top 3 scores: sort scores in desc order, then slice off first 3 elements, and add them
         const sum = scores.sort((a, b) => b - a).slice(0, 3).reduce((sum, score) => sum += score, 0)
+        console.log(`sum of marker ${marker['cycleInfo'].marker} is ${sum}`)
         if (sum > bestScore) {
+          console.log(`sum of marker ${marker['cycleInfo'].marker} is better; improving`)
           bestScore = sum
           bestMarker = marker['cycleInfo'].marker
         }
@@ -466,17 +475,21 @@ export function collectCycleData(
           .map(([, value]) => value);
 
         // If there is more than one marker for this cycle, output the cycle log
+        // eslint-disable-next-line security/detect-object-injection
         if (markers.length > 1) logCycle = true
 
+        // eslint-disable-next-line security/detect-object-injection
         for (const marker of markers) {
-          Logger.mainLogger.debug(
-            'Cycle',
-            counter,
-            marker,
-            /* eslint-disable security/detect-object-injection */
-            logCycle ? StringUtils.safeStringify([...receivedCycleTracker[counter][marker]['certSigners']]) : '',
-            logCycle ? receivedCycleTracker[counter][marker] : ''
-          )
+          // Logger.mainLogger.debug(
+          //   'Cycle',
+          //   counter,
+          //   marker,
+          //   /* eslint-disable security/detect-object-injection */
+          //   logCycle ? StringUtils.safeStringify([...receivedCycleTracker[counter][marker]['certSigners']]) : '',
+          //   logCycle ? receivedCycleTracker[counter][marker] : ''
+          //   /* eslint-enable security/detect-object-injection */
+          // )
+          // eslint-disable-next-line security/detect-object-injection
         }
         if (logCycle) Logger.mainLogger.debug(`Cycle ${counter} has ${markers.length} different markers!`)
         Logger.mainLogger.debug(`Received ${totalTimes} times for cycle counter ${counter}`)
@@ -787,10 +800,10 @@ export async function subscribeNodeFromThisSubset(nodeList: NodeList.ConsensusNo
   }
   if (subscribedNodesFromThisSubset.length > numberOfNodesToSubsribe) {
     // If there is more than one subscribed node from this subset, unsubscribe the extra ones
-    for (const publicKey of subscribedNodesFromThisSubset.splice(numberOfNodesToSubsribe)) {
-      Logger.mainLogger.debug('Unsubscribing extra node from this subset', publicKey)
-      unsubscribeDataSender(publicKey)
-    }
+    // for (const publicKey of subscribedNodesFromThisSubset.splice(numberOfNodesToSubsribe)) {
+    //   Logger.mainLogger.debug('Unsubscribing extra node from this subset', publicKey)
+    //   unsubscribeDataSender(publicKey)
+    // }
   }
   if (config.VERBOSE)
     Logger.mainLogger.debug('Subscribed nodes from this subset', subscribedNodesFromThisSubset)

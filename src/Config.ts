@@ -144,7 +144,7 @@ let config: Config = {
     save: true,
     interval: 1,
   },
-  ARCHIVER_MODE: 'release', // 'debug'/'release'
+  ARCHIVER_MODE: 'debug', // 'debug'/'release'
   DevPublicKey: '',
   dataLogWrite: true,
   dataLogWriter: {
@@ -250,7 +250,7 @@ let config: Config = {
   maxRecordsPerRequest: 200,
   multisigKeysSyncFromNetworkInternal: 600,
   minCycleConfirmationsToSave: -1,
-  nerfNonFoundationCertScores: false,
+  nerfNonFoundationCertScores: true,
   formingNetworkCycleThreshold: 30
 }
 // Override default config params from config file, env vars, and cli args

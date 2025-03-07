@@ -33,6 +33,7 @@ import { addCyclesToCache } from '../cache/cycleRecordsCache'
 import { queryLatestCycleRecords } from '../dbstore/cycles'
 import { updateGlobalNetworkAccount } from '../GlobalAccount'
 import { syncTxList } from '../sync-v2'
+import { sendDataRequest, initSocketClient, addDataSender, DataRequestTypes } from '../Data/Data'
 
 export interface ArchiverCycleResponse {
   cycleInfo: P2PTypes.CycleCreatorTypes.CycleData[]
@@ -269,7 +270,26 @@ function updateNodeList(cycle: P2PTypes.CycleCreatorTypes.CycleData): void {
 
   NodeList.addNodes(NodeList.NodeStatus.SYNCING, consensorInfos)
 
-  NodeList.setStatus(NodeList.NodeStatus.ACTIVE, activatedPublicKeys)
+  NodeList.setStatus(NodeList.NodeStatus.ACTIVE, activatedPublicKeys);
+
+  (async () => {
+    for (const pubKey of activatedPublicKeys) {
+      const newSenderInfo = NodeList.byPublicKey.get(pubKey)
+      const response = await sendDataRequest(newSenderInfo, DataRequestTypes.SUBSCRIBE)
+      Logger.mainLogger.debug('response', response)
+      if (response) {
+        initSocketClient(newSenderInfo)
+        // Add new dataSender to dataSenders
+        const newSender = {
+          nodeInfo: newSenderInfo,
+          types: [P2PTypes.SnapshotTypes.TypeNames.CYCLE, P2PTypes.SnapshotTypes.TypeNames.STATE_METADATA],
+          contactTimeout: null
+        }
+        addDataSender(newSender)
+        Logger.mainLogger.debug(`added new sender ${newSenderInfo.publicKey} to dataSenders`)
+      }
+    }
+  })()
 
   NodeList.refreshNodes(NodeList.NodeStatus.ACTIVE, refreshedConsensorInfos)
 

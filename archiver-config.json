@@ -5,7 +5,7 @@
   "ARCHIVER_PUBLIC_KEY": "",
   "ARCHIVER_SECRET_KEY": "",
   "archivers": [],
-  "ARCHIVER_MODE": "release",
+  "ARCHIVER_MODE": "debug",
   "DevPublicKey": "",
   "tickets": {  
     "allowedTicketSigners": {
