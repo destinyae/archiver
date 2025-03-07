@@ -53,41 +53,41 @@ const schemaSignedReceipt = {
 };
 
 const schemaGlobalTxReceipt = {
-    type: 'object',
-    properties: {
-        signs: {
-            type: 'array',
-            items: schemaSignature
-        },
-        tx: {
-            type: 'object',
-            properties: {
-                address: { type: 'string' },
-                addressHash: { type: 'string' },
-                value: {},
-                when: { type: 'integer' },
-                source: { type: 'string' },
-                txId: { type: 'string' }
-            },
-            required: ['address', 'addressHash', 'value', 'when', 'source', 'txId'],
-            additionalProperties: false
-        },
-        txGroupCycle: { type: 'integer', minimum: 0 }
+  type: 'object',
+  properties: {
+    signs: {
+      type: 'array',
+      items: schemaSignature,
     },
-    required: ['signs', 'tx'],
-    additionalProperties: false // Excludes `consensusGroup` by default
-};
-
+    tx: {
+      type: 'object',
+      properties: {
+        address: { type: 'string' },
+        addressHash: { type: 'string' },
+        afterStateHash: { type: 'string' },
+        value: {},
+        when: { type: 'integer' },
+        source: { type: 'string' },
+        txId: { type: 'string' },
+      },
+      required: ['address', 'addressHash', 'afterStateHash', 'value', 'when', 'source', 'txId'],
+      additionalProperties: false,
+    },
+    txGroupCycle: { type: 'integer', minimum: 0 },
+  },
+  required: ['signs', 'tx'],
+  additionalProperties: false, // Excludes `consensusGroup` by default
+}
 
 const schemaAppReceiptData = {
-    type: 'object',
-    properties: {
-        accountId: { type: 'string' },
-        data: { type: 'object', additionalProperties: true }
-    },
-    required: ['data'],
-    additionalProperties: true
-};
+  type: 'object',
+  properties: {
+    accountId: { type: 'string' },
+    data: { type: 'object', additionalProperties: true },
+  },
+  required: ['data'],
+  additionalProperties: true,
+}
 
 const schemaTx = {
   type: 'object',
