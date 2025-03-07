@@ -6,6 +6,7 @@ import { config } from '../Config'
 import { DeSerializeFromJsonString, SerializeToJsonString } from '../utils/serialization'
 import { Cycle, DbCycle } from './types'
 import { calculateBucketID, CycleCheckpointData, cycleCheckpointManager } from '../checkpoint/CycleData'
+import { bulkUpdateCheckpointStatusField, CheckpointStatusType } from './checkpointStatus'
 
 export async function insertCycle(cycle: Cycle, storeCheckpoints: boolean = true): Promise<void> {
 
@@ -79,6 +80,10 @@ export async function bulkInsertCycles(cycles: Cycle[], storeCheckpoints: boolea
 
     // Execute the single query for all cycles
     await db.run(cycleDatabase, sql, values)
+
+    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.CYCLE, true, undefined, undefined, cycles.map((cycle) => cycle.counter))
+    }
 
     if (config.VERBOSE) {
       Logger.mainLogger.debug('Successfully inserted Cycles', cycles.length)

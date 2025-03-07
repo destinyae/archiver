@@ -81,9 +81,6 @@ export async function processCycles(cycles: P2PTypes.CycleCreatorTypes.CycleData
 
       await addCyclesToCache(cycles)
       await storeCycleData([cycle])
-      if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
-        await bulkUpdateCheckpointStatusField(CheckpointStatusType.CYCLE, true, cycle.counter, cycle.counter)
-      }
 
       Logger.mainLogger.debug(`Processed cycle ${cycle.counter}`)
       if (State.isActive) {
