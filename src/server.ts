@@ -223,7 +223,7 @@ async function start(): Promise<void> {
     const startTime = Date.now()
     try {
       if (cycleCheckpointManager && receiptCheckpointManager && originalTxCheckpointManager) {
-        await Promise.all([
+        await Promise.allSettled([
           cycleCheckpointManager.update(),
           receiptCheckpointManager.update(),
           originalTxCheckpointManager.update()
@@ -340,7 +340,7 @@ async function syncAndStartServer(): Promise<void> {
 
             if (response && response.cycleInfo && response.cycleInfo.length > 0) {
               // Sort cycles in ascending order
-              const cycles = response.cycleInfo.sort((a, b) => a.counter - b.counter)
+              const cycles = response.cycleInfo
 
               // Process and store the cycles
               await Cycles.processCycles(cycles)
@@ -361,22 +361,13 @@ async function syncAndStartServer(): Promise<void> {
             const newBatchSize = Math.max(1, Math.floor(BATCH_SIZE / 2))
             currentEnd = Math.min(currentStart + newBatchSize, endCycle)
             retryCount++;
-
-            // If we're trying to fetch just one cycle and still failing, skip it
-            if (currentEnd - currentStart === 1) {
-              Logger.mainLogger.warn(`Skipping problematic cycle ${currentStart}`)
-              currentStart++
-              currentEnd = Math.min(currentStart + 1, endCycle)
-              break;
-            }
           }
         }
 
         // If we've exhausted retries and still haven't succeeded, skip this batch
         if (!success && retryCount >= MAX_RETRIES) {
           Logger.mainLogger.warn(`Failed to process cycles ${currentStart} to ${currentEnd} after ${MAX_RETRIES} retries. Skipping.`);
-          currentStart = currentEnd;
-          currentEnd = Math.min(currentStart + BATCH_SIZE, endCycle);
+          process.exit(1)
         }
       }
       lastStoredCycleCount = await CycleDB.queryCyleCount()
@@ -502,8 +493,9 @@ async function syncAndStartServer(): Promise<void> {
     const BATCH_SIZE = config.checkpoint.batchSize // 100
     let currentStart = lastStoredReceiptCycle
     let currentEnd = Math.min(currentStart + BATCH_SIZE, latestNetworkCycle.counter || currentStart)
-
-    while (currentStart < latestNetworkCycle.counter) {
+    let retryCount = 0
+    const MAX_RETRIES = 3;
+    while (currentStart < latestNetworkCycle.counter && retryCount < MAX_RETRIES) {
       try {
         const response = (await queryFromArchivers(
           RequestDataType.RECEIPT,
@@ -525,6 +517,7 @@ async function syncAndStartServer(): Promise<void> {
           // Reduce batch size on failure
           const newBatchSize = Math.max(1, Math.floor(BATCH_SIZE / 2))
           currentEnd = Math.min(currentStart + newBatchSize, latestNetworkCycle.counter)
+          retryCount++
         }
       } catch (error) {
         Logger.mainLogger.error(`Error patching receipts from cycle ${currentStart} to ${currentEnd}:`, error)
@@ -534,12 +527,7 @@ async function syncAndStartServer(): Promise<void> {
         Logger.mainLogger.error(
           `Failed to fetch receipts from cycle ${currentStart} to ${currentEnd}. Retrying...`
         )
-        // If we're trying to fetch just one cycle and still failing, skip it
-        if (currentEnd - currentStart === 1) {
-          Logger.mainLogger.warn(`Skipping problematic receipt cycle ${currentStart}`)
-          currentStart++
-          currentEnd = Math.min(currentStart + 1, latestNetworkCycle.counter)
-        }
+        retryCount++
       }
     }
 

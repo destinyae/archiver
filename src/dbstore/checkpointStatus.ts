@@ -164,7 +164,7 @@ export async function bulkUpdateCheckpointStatusField(
     // Handle specific cycles
     if (cycles && cycles.length > 0) {
       const cyclesStatus = new Map<number, CheckpointStatus>()
-      await Promise.all(cycles.map(async (cycle) => {
+      await Promise.allSettled(cycles.map(async (cycle) => {
         const status = await getCheckpointStatus(cycle)
         if (status) {
           cyclesStatus.set(cycle, status)
@@ -334,7 +334,6 @@ export async function getCheckpointStatusesByUnifiedStatus(unified: boolean): Pr
     const sql = `
       SELECT * FROM checkpoint_status
       WHERE unifiedStatus = ?
-      ORDER BY cycle ASC
     `
 
     const rows = await db.all(checkpointStatusDatabase, sql, [unified ? 1 : 0])

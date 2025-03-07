@@ -33,8 +33,6 @@ import { AJVSchemaEnum } from '../types/enum/AJVSchemaEnum'
 import { verifyTransaction } from "../services/transactionVerification";
 import { CycleShardData } from '@shardeum-foundation/lib-types/build/src/state-manager/shardFunctionTypes'
 import { generateTxId } from '../Utils'
-import { bulkUpdateCheckpointStatusField } from '../dbstore/checkpointStatus'
-import { CheckpointStatusType } from '../dbstore/checkpointStatus'
 
 export let storingAccountData = false
 const processedReceiptsMap: Map<string, number> = new Map()
@@ -997,11 +995,6 @@ export const storeReceiptData = async (
   if (combineReceipts.length > 0) {
     await Receipt.bulkInsertReceipts(combineReceipts)
     if (State.isActive) sendDataToAdjacentArchivers(DataType.RECEIPT, txDataList)
-    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
-      const cycles = [...new Set(combineReceipts.map(receipt => receipt.cycle))]
-      await bulkUpdateCheckpointStatusField(CheckpointStatusType.RECEIPT, true, undefined, undefined, cycles)
-      await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, undefined, undefined, cycles)
-    }
   }
 
   if (combineOriginalTxsData.length > 0) {

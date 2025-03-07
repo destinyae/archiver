@@ -171,7 +171,7 @@ export class CheckpointBucketManager<T> {
           const radixTally = bucket.peerRadixDigests.get(entry.digest.radix)
           if (radixTally) {
             // Calculate majority threshold
-            const totalArchivers = State.otherArchivers.length + 1
+            const totalArchivers = State.activeArchivers.length
             const majorityThreshold = Math.floor(totalArchivers / 2) + 1
 
             // Get votes for this entry's hash
@@ -523,7 +523,7 @@ export class CheckpointBucket<T> {
       }
 
       // totalArchivers counts ourself (+1) and external peers
-      const totalArchivers = State.otherArchivers.length + 1
+      const totalArchivers = State.activeArchivers.length
       // "Majority" means more than half
       const majorityThreshold = Math.floor(totalArchivers / 2) + 1
 
@@ -783,7 +783,7 @@ export class CheckpointBucket<T> {
 
       let majorityHash = ''
       let maxVotes = 0
-      const totalArchivers = State.otherArchivers.length + 1
+      const totalArchivers = State.activeArchivers.length
       const majorityThreshold = Math.floor(totalArchivers / 2) + 1
 
       // Track all hashes and their votes

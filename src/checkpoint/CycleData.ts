@@ -142,7 +142,7 @@ async function updateData(data: CheckpointData<Cycle>): Promise<void> {
   try {
     // Insert/Update into checkpointdata table
     const cycle = data.d
-    //average entry size observations: 40000 = 18394.7144, 4005264.9725, 400=4620.4675, 40=26892.925
+    // average entry size  in ITN4: 18394.7144 bytes
     await insertCycle(cycle, false)
   } catch (err) {
     Logger.mainLogger.error('Failed to store cycle checkpoint data:', err)

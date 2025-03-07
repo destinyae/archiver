@@ -1467,7 +1467,6 @@ export async function syncCyclesBetweenCycles(lastStoredCycle = 0, cycleToSyncTo
           Logger.mainLogger.error('Max retries reached for cycle download')
           return false
         }
-        continue
       }
     }
 
@@ -1536,7 +1535,6 @@ export async function syncReceipts(): Promise<void> {
               Logger.mainLogger.debug('Download receipts completed')
             }
           }
-          break
         }
       } else {
         Logger.mainLogger.debug(`Invalid download response, attempt ${retryCount + 1} of ${MAX_RETRIES}`)
@@ -1550,7 +1548,6 @@ export async function syncReceipts(): Promise<void> {
             complete = true
           }
         }
-        continue
       }
     }
 
@@ -1705,7 +1702,6 @@ export async function syncReceiptsByCycle(lastStoredReceiptCycle = 0, cycleToSyn
         Logger.mainLogger.error('Max retries reached for invalid download response')
         return false
       }
-      continue
     }
   }
 }
@@ -1911,7 +1907,6 @@ export const syncOriginalTxsByCycle = async (
         }
       }
       Logger.mainLogger.debug(`Download Original-Txs completed for ${startCycle} - ${endCycle}`)
-      await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, startCycle, endCycle)
       startCycle = endCycle + 1
       endCycle += MAX_BETWEEN_CYCLES_PER_REQUEST
     } else {
@@ -2021,7 +2016,6 @@ export const syncCyclesAndTxsData = async (
         )
       }
     }
-
     if (!completeForReceipt) {
       Logger.mainLogger.debug(`Downloading receipts from ${startReceipt} to ${endReceipt}`)
       let success = false
@@ -2045,17 +2039,13 @@ export const syncCyclesAndTxsData = async (
           if (downloadedReceipts.length < MAX_ORIGINAL_TXS_PER_REQUEST) {
             startReceipt += downloadedReceipts.length + 1
             endReceipt += downloadedReceipts.length + MAX_ORIGINAL_TXS_PER_REQUEST
-            break
           }
         } else {
           Logger.mainLogger.debug(`Invalid download response, attempt ${retryCount + 1} of ${MAX_RETRIES}`)
           retryCount++
           if (retryCount >= MAX_RETRIES) {
             Logger.mainLogger.error('Max retries reached for receipt download')
-            startReceipt = endReceipt + 1
-            endReceipt += MAX_ORIGINAL_TXS_PER_REQUEST
           }
-          continue
         }
       }
       if (success) {
@@ -2129,24 +2119,20 @@ export const syncCyclesAndTxsData = async (
               Logger.mainLogger.debug('Found invalid cycle data')
               continue
             }
-            processCycles([cycle])
+            await processCycles([cycle])
           }
           success = true
 
           if (cycles.length < MAX_CYCLES_PER_REQUEST) {
             startCycle += cycles.length + 1
             endCycle += cycles.length + MAX_CYCLES_PER_REQUEST
-            break
           }
         } else {
           Logger.mainLogger.debug(`Invalid cycle download response, attempt ${retryCount + 1} of ${MAX_RETRIES}`)
           retryCount++
           if (retryCount >= MAX_RETRIES) {
             Logger.mainLogger.error('Max retries reached for cycle download')
-            startCycle = endCycle + 1
-            endCycle += MAX_CYCLES_PER_REQUEST
           }
-          continue
         }
       }
       if (success) {
@@ -2347,6 +2333,9 @@ export async function compareWithOldCyclesData(lastCycleCounter = 0): Promise<Co
         !oldCycle ||
         StringUtils.safeStringify(downloadedCycle) !== StringUtils.safeStringify(oldCycle)
       ) {
+        if (config.VERBOSE) {
+          Logger.mainLogger.error('Mismatched cycle Number', downloadedCycle.counter, oldCycle.counter)
+        }
         return {
           success,
           matchedCycle,

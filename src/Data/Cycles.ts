@@ -81,13 +81,16 @@ export async function processCycles(cycles: P2PTypes.CycleCreatorTypes.CycleData
 
       await addCyclesToCache(cycles)
       await storeCycleData([cycle])
+      if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
+        await bulkUpdateCheckpointStatusField(CheckpointStatusType.CYCLE, true, cycle.counter, cycle.counter)
+      }
 
       Logger.mainLogger.debug(`Processed cycle ${cycle.counter}`)
       if (State.isActive) {
         sendDataToAdjacentArchivers(DataType.CYCLE, [cycle])
         // Check the archivers reputaion in every new cycle & record the status
         recordArchiversReputation()
-        State.syncOtherArchivers()
+        State.updateOtherArchivers()
       }
       await updateGlobalNetworkAccount(cycle.counter)
 
@@ -104,9 +107,6 @@ export async function processCycles(cycles: P2PTypes.CycleCreatorTypes.CycleData
       cleanOldOriginalTxsMap(cleanupTimestamp)
       cleanOldReceiptsMap(cleanupTimestamp)
       cleanShardCycleData(cycle.counter - config.maxCyclesShardDataToKeep)
-    }
-    if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
-      await bulkUpdateCheckpointStatusField(CheckpointStatusType.CYCLE, true, undefined, undefined, [...new Set(cycles.map(cycle => cycle.counter))])
     }
   } finally {
     if (profilerInstance) profilerInstance.profileSectionEnd('process_cycle', false)
@@ -421,7 +421,6 @@ export async function getNewestCycleFromArchivers(): Promise<P2PTypes.CycleCreat
     count: 1,
     sender: config.ARCHIVER_PUBLIC_KEY,
   }
-  Crypto.sign(data)
 
   const queryFn = async (
     node: NodeList.ConsensusNodeInfo

@@ -2,12 +2,7 @@ import * as Logger from '../Logger'
 import { config } from '../Config'
 import * as Data from '../Data/Data'
 import * as Cycles from '../Data/Cycles'
-import {
-  CheckpointStatusType,
-  updateCheckpointStatusField,
-  getCheckpointStatus,
-  getCheckpointSyncRange,
-} from '../dbstore/checkpointStatus'
+import { getCheckpointStatus, getCheckpointSyncRange } from '../dbstore/checkpointStatus'
 
 /**
  * Syncs missing or failed checkpoint data

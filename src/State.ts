@@ -210,7 +210,7 @@ export function resetActiveArchivers(archivers: ArchiverNodeInfo[]): void {
  * Synchronizes the otherArchivers list to only include archivers that are present in activeArchivers,
  * excluding the current archiver (itself).
  */
-export function syncOtherArchivers(): void {
+export function updateOtherArchivers(): void {
   // Filter out any archiver that is not in activeArchivers and is not the current archiver
   otherArchivers = activeArchivers.filter((a) => a.publicKey !== config.ARCHIVER_PUBLIC_KEY)
 }

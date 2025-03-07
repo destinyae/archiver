@@ -5,6 +5,7 @@ import * as Logger from '../Logger'
 import { config } from '../Config'
 import { DeSerializeFromJsonString, SerializeToJsonString } from '../utils/serialization'
 import { OriginalTxCheckpointData, calculateBucketID, originalTxCheckpointManager } from '../checkpoint/OriginalTxsData'
+import { CheckpointStatusType, bulkUpdateCheckpointStatusField } from './checkpointStatus'
 
 export interface OriginalTxData {
   txId: string
@@ -36,6 +37,7 @@ export async function insertOriginalTxData(originalTxData: OriginalTxData, store
       const checkpointData = new OriginalTxCheckpointData(originalTxData)
       const bucketID = calculateBucketID(originalTxData)
       originalTxCheckpointManager.addData(checkpointData, bucketID)
+      await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, undefined, undefined, [originalTxData.cycle])
     }
 
     // Define the table columns based on schema
@@ -75,8 +77,9 @@ export async function bulkInsertOriginalTxsData(originalTxsData: OriginalTxData[
       // Create checkpoints for all originalTxs
       for (const originalTx of originalTxsData) {
         const checkpointData = new OriginalTxCheckpointData(originalTx)
-      const bucketID = calculateBucketID(originalTx)
+        const bucketID = calculateBucketID(originalTx)
         originalTxCheckpointManager.addData(checkpointData, bucketID)
+        await bulkUpdateCheckpointStatusField(CheckpointStatusType.ORIGINAL_TX, true, undefined, undefined, [originalTx.cycle])
       }
     }
 
