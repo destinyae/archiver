@@ -128,8 +128,8 @@ export async function bulkUpdateCheckpointStatusField(
   cycles?: number[]
 ): Promise<void> {
   try {
-    if (!startCycle && !endCycle && !cycles) {
-      throw new Error('No range or cycles provided')
+    if (startCycle !== undefined && endCycle !== undefined && cycles !== undefined) {
+      throw new Error('Only one of startCycle, endCycle, or cycles should be provided')
     }
     let existingRows: CheckpointStatus[] = []
     let existingMap = new Map<number, CheckpointStatus>()
