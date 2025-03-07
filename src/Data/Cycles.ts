@@ -105,11 +105,11 @@ export async function processCycles(cycles: P2PTypes.CycleCreatorTypes.CycleData
       cleanOldReceiptsMap(cleanupTimestamp)
       cleanShardCycleData(cycle.counter - config.maxCyclesShardDataToKeep)
     }
-  } finally {
-    if (profilerInstance) profilerInstance.profileSectionEnd('process_cycle', false)
     if (config.checkpoint.bucketConfig.allowCheckpointUpdates) {
       await bulkUpdateCheckpointStatusField(CheckpointStatusType.CYCLE, true, undefined, undefined, [...new Set(cycles.map(cycle => cycle.counter))])
     }
+  } finally {
+    if (profilerInstance) profilerInstance.profileSectionEnd('process_cycle', false)
   }
 }
 

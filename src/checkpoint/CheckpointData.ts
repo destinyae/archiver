@@ -465,9 +465,11 @@ export class CheckpointBucket<T> {
 
         this.hasUpdatesToShare = hasNewUpdates
       } else {
-        Logger.mainLogger.error(
-          `Failed to reach consensus when sharing digests. Only ${successfulPeers.size}/${peers.length} peers acknowledged`
-        )
+        if (config.VERBOSE) {
+          Logger.mainLogger.debug(
+            `Failed to reach consensus when sharing digests. Only ${successfulPeers.size}/${peers.length} peers acknowledged`
+          )
+        }
         // Keep hasUpdatesToShare true so we'll try again
       }
     } catch (err) {
@@ -502,7 +504,9 @@ export class CheckpointBucket<T> {
         peerDigests: Array.from(this.peerRadixDigests.entries()),
       }
       const filename = `${config.failedBucketsDir}/failed-bucket-${this.checkpointType}-${this.bucketID}-${this.startTime}.json`
-      Logger.mainLogger.debug(`Writing bucket id ${this.bucketID} data to file ${filename}`)
+      if (config.VERBOSE) {
+        Logger.mainLogger.debug(`Writing bucket id ${this.bucketID} data to file ${filename}`)
+      }
       // Write to file
       fs.writeFileSync(filename, StringUtils.safeStringify(bucketData))
     } catch (err) {

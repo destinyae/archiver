@@ -1332,9 +1332,11 @@ export function registerRoutes(server: FastifyInstance<Server, IncomingMessage, 
       const manager = getCheckpointManager(checkpointType)
       const bucket = manager.checkpointBuckets.get(bucketID)
       if (!bucket) {
-        Logger.mainLogger.error(
-          `Bucket not found: No bucket with ID=${bucketID} for checkpoint type ${checkpointType}.`
-        )
+        if (config.VERBOSE) {
+          Logger.mainLogger.debug(
+            `Bucket not found: No bucket with ID=${bucketID} for checkpoint type ${checkpointType}.`
+          )
+        }
         reply.status(404).send(`Bucket not found for ID=${bucketID}.`)
         return
       }
@@ -1373,9 +1375,11 @@ export function registerRoutes(server: FastifyInstance<Server, IncomingMessage, 
       const manager = getCheckpointManager(checkpointType)
       const bucket = manager.checkpointBuckets.get(bucketID)
       if (!bucket) {
-        Logger.mainLogger.error(
-          `Bucket not found: No bucket with ID=${bucketID} for checkpoint type ${checkpointType}.`
-        )
+        if (config.VERBOSE) {
+          Logger.mainLogger.debug(
+            `Bucket not found: No bucket with ID=${bucketID} for checkpoint type ${checkpointType}.`
+          )
+        }
         reply.status(404).send(`Bucket not found for ID=${bucketID}.`)
         return
       }

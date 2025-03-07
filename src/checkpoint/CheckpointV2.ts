@@ -23,7 +23,9 @@ export async function syncMissingCheckpoints(maxCyclesToSync: number = 10): Prom
     }
 
     const { minCycle, maxCycle } = syncRange
-    Logger.mainLogger.info(`Syncing checkpoints from cycle ${minCycle} to ${maxCycle}`)
+    if (config.VERBOSE) {
+      Logger.mainLogger.info(`Syncing checkpoints from cycle ${minCycle} to ${maxCycle}`)
+    }
 
     // Limit the number of cycles to sync at once
     const endCycle = Math.min(minCycle + maxCyclesToSync - 1, maxCycle)
