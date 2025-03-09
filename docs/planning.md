@@ -14,7 +14,7 @@
 
     - Config param for another archiver node's info
 
-      - If provided, trys to get nodelist from it
+      - If provided, try to get nodelist from it
 
       - Otherwise, becomes first archiver node
 
